@@ -2,15 +2,18 @@ clc;
 clear vaiables;
 close all;
 
+%% Defining variables
 global N A AA Edgedata OR CR RR SO SC SR
-Montecarlo=6;
+Montecarlo=100;
 OwlsHeadServiceability=ones(Montecarlo,120);
 ConeyIslandServiceability=ones(Montecarlo,120);
 RockawayServiceability=ones(Montecarlo,120);
 
+% For considering the uncertinties in the opeational condition of assets, the network's recovery is simulated for 100 realizations
 for Mc=1:Montecarlo
+
 %% Defining the network
-% Adjacency matrix and nodes' characteristics are defined
+% Adjacency matrix (A) and nodes' characteristics are defined
 A=xlsread('Nodes.xlsx','Adjacency');
 Nodedata=readtable('Nodes.xlsx','Sheet','Data');
 Edgedata=readtable('Nodes.xlsx','Sheet','Edges');
@@ -25,19 +28,18 @@ G.Edges.Length=table2array(Edgedata(:,1));
 G.Edges.Prob=table2array(Edgedata(:,2));
 G.Edges.Recovery=table2array(Edgedata(:,3));
 
-%% Initial Operability is assigned based on probability of damage
-
+%% Initial Operability is assigned to be zero or one based on probability of damage
 % For nodes:
 for i=1:N 
     G.Nodes.Operability(i)=randsrc(1,1,[0,1;NProb(i),1-NProb(i)]);
 end
 G.Nodes.Serviceability=G.Nodes.Operability;
-% For edges:
+% For links (edges):
 for i=1:size(EProb,1) 
     G.Edges.Operability(i)=randsrc(1,1,[0,1;EProb(i),1-EProb(i)]);
 end
 
-% Damaged nodes (and their links) and links operability is changed to zero
+% Damaged nodes' (and their links) and links' operabilities are reduced to zero
 for n=1:N
     for m=1:N  
         if G.Nodes.Operability(n)==0
@@ -50,8 +52,7 @@ for n=1:N
     end
 end
 
-%% Defining Recovery matrix for each time step
-
+%% Defining Recovery matrix for each time step (Each column of this matrix shows the serviceability values of the node in row).
 % Recovery matrix showing the Serviceability of nodes in each time step
 R=ones(N,2);
 % Before hazard (t=1)
@@ -60,44 +61,31 @@ R(:,1)=1;
 R(:,2)=G.Nodes.Serviceability;
 R(:,3)=G.Nodes.Serviceability;
 
-%% Problem Definition
-
-FitnessFunction=@(G,V,R) MaxR(G,V,R);     % Fitness Function
-
+%% GA Definition
+FitnessFunction=@(G,V,R) MaxR(G,V,R);     % Fitness Function: Recovery matrix, R, of network G according to restoration sequence V
 nVar=20;            % Number of Decision Variables
-
 VarSize=[1 nVar];   % Decision Variables Matrix Size
 
 %% GA Parameters
-
-MaxIt=10;      % Maximum Number of Iterations
-
-nPop=6;        % Population Size
-
+MaxIt=100;      % Maximum Number of Iterations
+nPop=20;        % Population Size
 pc=0.8;                 % Crossover Percentage
 nc=2*round(pc*nPop/2);  % Number of Offsprings (Parnets)
-
 pm=0.3;                 % Mutation Percentage
 nm=round(pm*nPop);      % Number of Mutants
 
 %% Initialization
-
 empty_individual.Sequence=[zeros(1,12);zeros(1,8),ones(1,4)*20];
 empty_individual.Resilience=[];
-
 pop=repmat(empty_individual,nPop,1);
 
 % Generating first generation of the population
 for i=1:nPop
-
-    V=[randperm(12);randperm(8)+12,20,20,20,20];
-    
-  
-  
+% First restoration sequences are determined randomly; the case study has 20 nodes (12 for power and 8 for wastewater infrastructure).
+    V=[randperm(12);randperm(8)+12,20,20,20,20]; 
     % Initialize Sequence
     pop(i).Sequence=V;
-    
-    % Evaluation
+    % Evaluation; ; Evaluation functionm, which simulates the restoration of network assets until complete recovery is developed separately and not included here.
     pop(i).Resilience=FitnessFunction(G,pop(i).Sequence,R);
 end
 
@@ -113,7 +101,6 @@ BestBestSequence=zeros(size(V,1),size(V,2),Montecarlo);
 BestResilience=zeros(MaxIt,1);
 
 %% Main Loop
-
 for it=1:MaxIt
     
     % Crossover
@@ -127,7 +114,7 @@ for it=1:MaxIt
         p1=pop(p(1));
         p2=pop(p(2));
         
-        % Apply Crossover
+        % Apply Crossover; DoublePointCrossover function is developed separately and not included here.
         [popc(k,1).Sequence,popc(k,2).Sequence]=DoublePointCrossover(p1.Sequence,p2.Sequence);
         
         % Evaluate Offsprings
@@ -145,7 +132,7 @@ for it=1:MaxIt
         i=randi([1 nPop]);
         p=pop(i);
         
-        % Apply Mutation
+        % Apply Mutation; Mutation function is developed separately and not included here.
         popm(k).Sequence=Mutation(p.Sequence);
         
         % Evaluate Mutant
@@ -172,27 +159,29 @@ for it=1:MaxIt
     BestResilience(it)=pop(1).Resilience;
     
     % Show Iteration Information
-    disp(['Iteration ',num2str(it),': Best Resilience = ',num2str(BestResilience(it))]);
-    
+    disp(['Iteration ',num2str(it),': Best Resilience = ',num2str(BestResilience(it))]);   
 end
 
 BestResult=FitnessFunction(G,popm(1).Sequence,R);
-%% Results
 
+%% Results
+% For monitoring the improving of the algorithm's performance 
 figure;
 plot(BestResilience,'LineWidth',2);
 xlabel('Iteration');
 ylabel('Resilience');
 
-disp(['Owls Head WWTP resiliency is ',num2str(OR*100),'%']);
+% Calculate the Resilience metric of the three WWTPs in the study area
+disp(['Owls Head WWTP resilience is ',num2str(OR*100),'%']);
 OwlsHeadServiceability(Mc,1:size(SO,2))=SO;
 
-disp(['Coney Island WWTP resiliency is ',num2str(CR*100),'%']);
+disp(['Coney Island WWTP resilience is ',num2str(CR*100),'%']);
 ConeyIslandServiceability(Mc,1:size(SC,2))=SC;
 
-disp(['Rockaway WWTP resiliency is ',num2str(RR*100),'%']);
+disp(['Rockaway WWTP resilience is ',num2str(RR*100),'%']);
 RockawayServiceability(Mc,1:size(SR,2))=SR;
 
+% Show the optimum restoration sequence which results the best resilience
 disp('Optimized sequence for best resilience is ');
 disp(BestSequence(:,:,MaxIt));
 BestBestSequence(:,:,Mc)=BestSequence(:,:,MaxIt);
